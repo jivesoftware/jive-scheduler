@@ -2,7 +2,7 @@
   "name": "jive-scheduler",
   "description": "Scheduler libraries for the jive-sdk",
   "version": "0.0.1",
-  "main": "kue/scheduler.js",
+  "main": "./kue/scheduler.js",
   "author": {
     "name": "Jive Software",
     "email": "jivedev@jivesoftware"
