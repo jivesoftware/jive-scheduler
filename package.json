@@ -33,6 +33,7 @@
     "framework",
     "app",
     "purposeful_places",
-    "api"
+    "api",
+    "tiles"
   ]
 }
