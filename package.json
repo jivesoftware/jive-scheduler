@@ -1,0 +1,37 @@
+{
+  "name": "jive-scheduler",
+  "description": "Scheduler libraries for the jive-sdk",
+  "version": "0.0.1",
+  "author": {
+    "name": "Jive Software",
+    "email": "jivedev@jivesoftware"
+  },
+  "dependencies": {
+    "q": "0.9.3",
+    "jive-sdk": "*",
+    "redis" : "0.8.4",
+    "kue" : "0.6.2"
+  },
+  "devDependencies": {},
+  "optionalDependencies": {},
+  "engines": {
+    "node": "*"
+  },
+  "contributors": [
+    {
+      "name": "Aron Racho",
+      "email": "aron.racho@jivesoftware.com"
+    }
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git://github.com/jivesoftware/jive-scheduler"
+  },
+  "keywords": [
+    "jive",
+    "framework",
+    "app",
+    "purposeful_places",
+    "api"
+  ]
+}
