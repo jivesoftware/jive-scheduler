@@ -1,7 +1,7 @@
 {
-  "name": "jive-scheduler",
+  "name": "jive-scheduler-kue",
   "description": "Scheduler libraries for the jive-sdk",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "main": "./kue/scheduler.js",
   "author": {
     "name": "Jive Software",
@@ -26,7 +26,7 @@
   ],
   "repository": {
     "type": "git",
-    "url": "git://github.com/jivesoftware/jive-scheduler"
+    "url": "git://github.com/jivesoftware/jive-scheduler-kue"
   },
   "keywords": [
     "jive",
