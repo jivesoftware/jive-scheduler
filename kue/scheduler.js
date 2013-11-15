@@ -139,9 +139,10 @@ var findTasksInSet = function(eventID, tasks) {
         }
     }
     return found;
-}
+};
 
 var setupKue = function(options) {
+    options = options || {};
     //set up kue, optionally with a custom redis location.
     redisClient = new worker().makeRedisClient(options);
     kue.redis.createClient = function() {
@@ -259,16 +260,16 @@ Scheduler.prototype.init = function init( _eventHandlerMap, serviceConfig ) {
         return;
     }
 
-    setupCleanupTasks(_eventHandlerMap);
+    setupCleanupTasks(eventHandlerMap);
 
     if ( isWorker ) {
         opts['queueName'] = jobQueueName;
-        new worker().init(_eventHandlerMap, opts);
+        new worker().init(this, eventHandlerMap, opts);
     }
 
     if ( isPusher ) {
         opts['queueName'] = pushQueueName;
-        new worker().init(_eventHandlerMap, opts);
+        new worker().init(this, eventHandlerMap, opts);
     }
 
     scheduleLocalTasks = isWorker;

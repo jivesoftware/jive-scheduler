@@ -32,6 +32,7 @@ function Worker() {
 var redisClient;
 var jobs;
 var eventHandlers;
+var scheduler;
 var queueName;
 
 ///////////////////////////////////////////////////////////////////////////////////////////////
@@ -47,7 +48,7 @@ function shouldRun( meta ) {
         return q.resolve(true);
     }
 
-    return jive.context.scheduler.searchTasks(eventID).then( function(tasks) {
+    return scheduler.searchTasks(eventID).then( function(tasks) {
         var runningJob;
 
         for ( var i = 0; i < tasks.length; i++ ) {
@@ -163,14 +164,15 @@ function eventExecutor(job, done) {
 module.exports = Worker;
 
 Worker.prototype.makeRedisClient = function(options) {
-    if (options['redisLocation'] && options['redisPort']) {
+    if (options && options['redisLocation'] && options['redisPort']) {
         return redis.createClient(options['redisPort'], options['redisLocation']);
     }
 
     return redis.createClient();
 };
 
-Worker.prototype.init = function init(handlers, options) {
+Worker.prototype.init = function init(_scheduler, handlers, options) {
+    scheduler = _scheduler;
     eventHandlers = handlers;
     queueName = options['queueName'];
     var self = this;
