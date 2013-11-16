@@ -70,6 +70,7 @@ function shouldRun( meta ) {
 function eventExecutor(job, done) {
     var meta = job.data;
 
+
     shouldRun(meta).then( function(shouldRun) {
 
         var context = meta['context'];
@@ -121,7 +122,12 @@ function eventExecutor(job, done) {
 
         var promises = [];
         handlers.forEach( function(handler) {
-            var result = handler(context);
+            try {
+                var result = handler(context);
+            } catch (e) {
+                result = q.reject( e );
+            }
+
             if ( result && result['then'] ) {
                 // its a promise
                 promises.push( result );
@@ -182,5 +188,27 @@ Worker.prototype.init = function init(_scheduler, handlers, options) {
     redisClient = self.makeRedisClient(options);
     jobs = kue.createQueue();
     jobs.promote(1000);
-    jobs.process(queueName, options['concurrentJobs'] || 100, eventExecutor);
+    jobs.process(queueName, options['concurrentJobs'] || 1000, eventExecutor);
+
+// this does not work at high volume :(
+//    var jobCleanup = function(event) {
+//        return function(id) {
+//            kue.Job.get(id, function(err, job) {
+//                if ((err != null) || !(job != null)) {
+//                    jive.logger.warn("[kue-sweeper::on job " + event + "] fail to get job: " + id + ". error:" + err);
+//                    return;
+//                }
+//                jive.logger.debug("[kue-sweeper::removeKueJob] job:" + job.id);
+//                if (!((job != null) && typeof job.remove == 'function' )) {
+//                    jive.logger.error("[kue-sweeper::removeKueJob] bad argument, " + job);
+//                    return;
+//                } else {
+//                    job.remove();
+//                }
+//            });
+//        };
+//    };
+//    jobs.on('job complete', jobCleanup('complete'));
 };
+
+

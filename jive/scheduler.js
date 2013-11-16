@@ -47,7 +47,7 @@ var queueFor = function(eventID) {
 var removeJob = function( job ) {
     var deferred = q.defer();
     job.remove(function() {
-        jive.logger.info('job', job.id, job['data']['eventID'], 'expired, removed');
+        jive.logger.error('job', job.id, job['data']['eventID'], 'expired, removed');
         deferred.resolve();
     });
 
@@ -55,21 +55,30 @@ var removeJob = function( job ) {
 };
 
 var failJob = function( job ) {
-    var deferred = q.defer();
-    job.failed(function() {
-        jive.logger.info('job', job.id, job['data']['eventID'], 'expired, removed');
-        deferred.resolve();
-    });
+    // putting things in failed state can result in wierdness ....
 
-    return deferred.promise;
+//    if ( job._state == 'failed' ) {
+//        return removeJob(job);
+//    }
+
+    job.complete();
+    var elapsed = ( new Date().getTime() - job.created_at ) / 1000;
+    if ( elapsed > 10 * 60 ) {
+        // try to destroy now, more than 10 minutes old
+        return removeJob(job);
+    }
+
+    jive.logger.error('job', job.id, job['data']['eventID'], 'expired, marked complete');
+    return q.resolve();
 };
 
 var cleanUpStuckActiveJobs = function(deferred, activeJobs) {
     var acceptedJobs = [];
     var promises = [];
     activeJobs.forEach(function(job) {
+
         var elapsed = ( new Date().getTime() - job.updated_at ) / 1000;
-        if (elapsed > 20 && job.data.eventID != 'jive.reaper' ) {
+        if ( elapsed > 20 ) {
             // jobs shouldn't be inactive for more than 20 seconds
             promises.push(failJob(job));
         } else {
@@ -103,22 +112,19 @@ var searchJobsByQueueAndTypes = function(queueName, types) {
         var defer = q.defer();
         promises.push(defer.promise);
 
-        function doSearch() {
-            kue.Job.rangeByType(queueName, type, 0, -1, 'asc', function (err, jobs) {
-                if (err) {
-                    defer.reject(err);
+        kue.Job.rangeByType(queueName, type, 0, -1, 'asc', function (err, jobs) {
+            if (err) {
+                jive.logger.error(err);
+                process.exit(-1);
+            } else {
+                if ( type == 'active' ) {
+                    cleanUpStuckActiveJobs(deferred, jobs);
+                } else {
+                    defer.resolve(jobs);
                 }
-                else {
-                    if ( type == 'active' ) {
-                        cleanUpStuckActiveJobs(deferred, jobs);
-                    } else {
-                        defer.resolve(jobs);
-                    }
-                }
-            });
-        }
+            }
+        });
 
-        doSearch();
     });
     q.all(promises).then(function(jobArrays) {
         deferred.resolve(jobArrays.reduce(function(prev, curr) {
@@ -167,6 +173,7 @@ var scheduleLocalRecurrentTask = function(delay, self, eventID, context, interva
     // then prevent locally scheduled job from being scheduled
     var execute = function() {
         redisClient.get( eventID + ':lastrun', function(err, result) {
+
             var now = new Date().getTime();
             var elapsed = now - result;
             if ( err || !result || ( elapsed >= interval ) ) {
@@ -208,32 +215,33 @@ function setupCleanupTasks(_eventHandlerMap) {
     // to reap the job result records in redis
     _eventHandlerMap['jive.reaper'] = function() {
         var deferred = q.defer();
-        jive.logger.debug("Running reaper");
+        jive.logger.error("Running reaper");
         kue.Job.rangeByState('complete', 0, -1, 'asc', function (err, jobs) {
-            kue.Job.rangeByState('failed', 0, -1, 'asc', function(failedErr, failedJobs) {
-                jobs = jobs.concat(failedJobs);
-                var promises = [];
-                if ( jobs ) {
-                    jobs.forEach( function(job) {
-                        var elapsed = ( new Date().getTime() - job.created_at ) / 1000;
-                        if ( elapsed > (10 * 60) ) {
-                            // if completed more than 10 minutes ago, nuke it
-                            promises.push( removeJob(job) );
-                        }
-                    });
-                }
+            if ( err) {
+                jive.logger.error(err);
+                process.exit(-1);
+            }
+            var promises = [];
+            if ( jobs ) {
+                jobs.forEach( function(job) {
+                    var elapsed = ( new Date().getTime() - job.created_at ) / 1000;
+                    if ( elapsed > (10 * 60) ) {
+                        // if completed more than 10 minutes ago, nuke it
+                        promises.push( removeJob(job) );
+                    }
+                });
+            }
 
-                if ( promises.length > 0 ) {
-                    q.all(promises).then( function() {
-                        jive.logger.warn("Reaper task cleaned up", promises.length);
-                    }).finally(function() {
-                            deferred.resolve();
-                        });
-                } else {
-                    jive.logger.debug("Cleaned up nothing");
-                    deferred.resolve();
-                }
-            });
+            if ( promises.length > 0 ) {
+                q.all(promises).then( function() {
+                    jive.logger.error("Reaper task cleaned up", promises.length);
+                }).finally(function() {
+                        deferred.resolve();
+                    });
+            } else {
+                jive.logger.error("Cleaned up nothing");
+                deferred.resolve();
+            }
         });
         return deferred.promise;
     };
@@ -251,8 +259,8 @@ Scheduler.prototype.init = function init( _eventHandlerMap, serviceConfig ) {
     eventHandlerMap = _eventHandlerMap || jive.events.eventHandlerMap;
 
     var self = this;
-    var isWorker = !serviceConfig || !serviceConfig['role'] || serviceConfig['role'] === jive.constants.roles.WORKER;
-    var isPusher = !serviceConfig || !serviceConfig['role'] || serviceConfig['role'] === jive.constants.roles.PUSHER;
+    var isWorker  = !serviceConfig || !serviceConfig['role'] || serviceConfig['role'] === jive.constants.roles.WORKER;
+    var isPusher  = !serviceConfig || !serviceConfig['role'] || serviceConfig['role'] === jive.constants.roles.PUSHER;
 
     var opts = setupKue(serviceConfig);
     if (!(isPusher || isWorker)) {
@@ -282,7 +290,7 @@ Scheduler.prototype.init = function init( _eventHandlerMap, serviceConfig ) {
     });
 
     // schedule a periodic repear task
-    self.schedule('jive.reaper', {}, 10 * 1000, undefined, false, 30 * 1000 );
+    self.schedule('jive.reaper', {}, 10 * 1000, undefined, false, 60 * 1000 );
 
     jive.logger.info("Redis Scheduler Initialized for queue");
 };
@@ -369,6 +377,10 @@ Scheduler.prototype.schedule = function schedule(eventID, context, interval, del
                     }
                 }
             }
+
+            // this does not work at high volume?
+//            job.remove();
+
         });
     });
 
@@ -402,7 +414,7 @@ Scheduler.prototype.isScheduled = function(eventID) {
         var found = false;
         if (findTasksInSet(eventID, tasks).length > 0) {
             found = true;
-        };
+        }
         deferred.resolve(found);
     });
     return deferred.promise;

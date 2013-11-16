@@ -1,8 +1,8 @@
 {
   "name": "jive-scheduler-kue",
   "description": "Scheduler libraries for the jive-sdk",
-  "version": "0.0.3",
-  "main": "./kue/scheduler.js",
+  "version": "0.0.4",
+  "main": "./jive/scheduler.js",
   "author": {
     "name": "Jive Software",
     "email": "jivedev@jivesoftware"
@@ -11,7 +11,7 @@
     "q": "0.9.3",
     "jive-sdk": "*",
     "redis" : "0.8.4",
-    "kue" : "0.6.2"
+    "kue" : "git+https://github.com/dfoody/kue.git"
   },
   "devDependencies": {},
   "optionalDependencies": {},
