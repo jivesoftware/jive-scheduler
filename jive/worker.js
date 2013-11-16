@@ -92,6 +92,13 @@ function eventExecutor(job, done) {
             });
         };
 
+        var abort = function( ){
+            if ( liveNess ) {
+                clearTimeout(liveNess);
+            }
+            done();
+        };
+
         var liveNess = setInterval( function() {
             // update the job every 1 seconds to ensure liveness
             job.update();
@@ -101,7 +108,8 @@ function eventExecutor(job, done) {
         if (eventListener) {
             var tileEventHandlers = eventHandlers[eventListener];
             if ( !tileEventHandlers ) {
-                done();
+                jive.logger.error("No event handler for " + eventListener + ", eventID " + eventID);
+                abort();
                 return;
             }
             handlers = tileEventHandlers[eventID];
@@ -111,7 +119,7 @@ function eventExecutor(job, done) {
 
         if ( !handlers ) {
             // could find no handlers for the eventID; we're done
-            done();
+            abort();
             return;
         }
 
@@ -188,7 +196,31 @@ Worker.prototype.init = function init(_scheduler, handlers, options) {
     redisClient = self.makeRedisClient(options);
     jobs = kue.createQueue();
     jobs.promote(1000);
-    jobs.process(queueName, options['concurrentJobs'] || 1000, eventExecutor);
+
+    var addListener = function(eventQueueName) {
+        console.log('-->', eventQueueName);
+        jobs.process(eventQueueName, options['concurrentJobs'] || 1000, eventExecutor);
+    };
+
+    // analyze event listeners and listen on redis queue for events on them
+    for (var eventListener in eventHandlers) {
+        if (eventHandlers.hasOwnProperty(eventListener)) {
+            var listeners = eventHandlers[eventListener];
+            if ( typeof listeners === 'function' ) {
+                addListener(queueName + '.' + eventListener);
+            } else if (typeof listeners === 'object' ) {
+                for ( var eventID in listeners ) {
+                    if ( listeners.hasOwnProperty(eventID) ) {
+                        addListener(queueName + '.' + eventListener + '.' + eventID);
+                    }
+                }
+            }
+        }
+    }
+
+    // also listen to anonymous system tasks
+    addListener( queueName + '.' + '__jive_system_tasks' + '.' + '__anonymous' );
+
 };
 
 

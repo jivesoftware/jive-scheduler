@@ -36,12 +36,21 @@ module.exports = Scheduler;
 ///////////////////////////////////////////////////////////////////////////////////////////////
 // private helpers
 
-var queueFor = function(eventID) {
+var queueFor = function(eventID, meta) {
+    var queueName;
     if (jive.events.pushQueueEvents.indexOf(eventID) != -1 ) {
-        return pushQueueName;
+        queueName = pushQueueName;
     } else {
-        return jobQueueName;
+        queueName = jobQueueName;
     }
+
+    var eventListener;
+    if ( meta && meta['context'] ) {
+        eventListener = meta['context']['eventListener'];
+    }
+
+    queueName = queueName + ( eventListener ? ('.' + eventListener) : '' ) + '.' + eventID;
+    return queueName;
 };
 
 var removeJob = function( job ) {
@@ -239,7 +248,7 @@ function setupCleanupTasks(_eventHandlerMap) {
                         deferred.resolve();
                     });
             } else {
-                jive.logger.debugger("Cleaned up nothing");
+                jive.logger.debug("Cleaned up nothing");
                 deferred.resolve();
             }
         });
@@ -317,33 +326,26 @@ Scheduler.prototype.schedule = function schedule(eventID, context, interval, del
 
     var deferred = q.defer();
 
-    var jobID = jive.util.guid();
     var meta = {
-        'jobID' : jobID,
+        'jobID' : jive.util.guid(),
         'eventID' : eventID,
-        'context' : context
+        'context' : context,
+        'interval': interval,
+        'delay'   : delay,
+        'timeout' : timeout
     };
-    if (interval) {
-        meta['interval'] = interval;
-    }
-    if ( delay ) {
-        meta['delay'] = delay;
-    }
     if ( exclusive ) {
         meta['exclusive'] = true;
     }
-    if ( timeout ) {
-        meta['timeout'] = timeout;
-    }
 
-    var job = jobs.create(queueFor(eventID), meta);
+    var job = jobs.create(queueFor(eventID, meta), meta);
     if ( interval || delay ) {
         job.delay(interval && !delay ? interval : delay);
     }
 
     var timeoutWatcher = setTimeout( function() {
         // jobs should not take more than 5 minutes
-        jive.logger.debug("Failed jobID " + jobID + " eventID " + eventID + " due to timeout");
+        jive.logger.debug("Failed jobID " + meta['jobID'] + " eventID " + eventID + " due to timeout");
         job.failed();
 
         deferred.resolve();
@@ -432,7 +434,7 @@ Scheduler.prototype.searchTasks = function(eventID, statuses) {
         deferred.resolve(findTasksInSet(eventID, tasks));
     });
     return deferred.promise;
-}
+};
 
 /**
  * Returns a promise which resolves with the jobs currently scheduled (recurrent or dormant)
