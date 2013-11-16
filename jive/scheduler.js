@@ -47,7 +47,7 @@ var queueFor = function(eventID) {
 var removeJob = function( job ) {
     var deferred = q.defer();
     job.remove(function() {
-        jive.logger.error('job', job.id, job['data']['eventID'], 'expired, removed');
+        jive.logger.warn('job', job.id, job['data']['eventID'], 'expired, removed');
         deferred.resolve();
     });
 
@@ -68,7 +68,7 @@ var failJob = function( job ) {
         return removeJob(job);
     }
 
-    jive.logger.error('job', job.id, job['data']['eventID'], 'expired, marked complete');
+    jive.logger.warn('job', job.id, job['data']['eventID'], 'expired, marked complete');
     return q.resolve();
 };
 
@@ -215,7 +215,7 @@ function setupCleanupTasks(_eventHandlerMap) {
     // to reap the job result records in redis
     _eventHandlerMap['jive.reaper'] = function() {
         var deferred = q.defer();
-        jive.logger.error("Running reaper");
+        jive.logger.debug("Running reaper");
         kue.Job.rangeByState('complete', 0, -1, 'asc', function (err, jobs) {
             if ( err) {
                 jive.logger.error(err);
@@ -234,12 +234,12 @@ function setupCleanupTasks(_eventHandlerMap) {
 
             if ( promises.length > 0 ) {
                 q.all(promises).then( function() {
-                    jive.logger.error("Reaper task cleaned up", promises.length);
+                    jive.logger.info("Reaper task cleaned up", promises.length);
                 }).finally(function() {
                         deferred.resolve();
                     });
             } else {
-                jive.logger.error("Cleaned up nothing");
+                jive.logger.debugger("Cleaned up nothing");
                 deferred.resolve();
             }
         });

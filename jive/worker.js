@@ -189,26 +189,6 @@ Worker.prototype.init = function init(_scheduler, handlers, options) {
     jobs = kue.createQueue();
     jobs.promote(1000);
     jobs.process(queueName, options['concurrentJobs'] || 1000, eventExecutor);
-
-// this does not work at high volume :(
-//    var jobCleanup = function(event) {
-//        return function(id) {
-//            kue.Job.get(id, function(err, job) {
-//                if ((err != null) || !(job != null)) {
-//                    jive.logger.warn("[kue-sweeper::on job " + event + "] fail to get job: " + id + ". error:" + err);
-//                    return;
-//                }
-//                jive.logger.debug("[kue-sweeper::removeKueJob] job:" + job.id);
-//                if (!((job != null) && typeof job.remove == 'function' )) {
-//                    jive.logger.error("[kue-sweeper::removeKueJob] bad argument, " + job);
-//                    return;
-//                } else {
-//                    job.remove();
-//                }
-//            });
-//        };
-//    };
-//    jobs.on('job complete', jobCleanup('complete'));
 };
 
 
