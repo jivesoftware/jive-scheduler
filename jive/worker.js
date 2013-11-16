@@ -48,7 +48,7 @@ function shouldRun( meta ) {
         return q.resolve(true);
     }
 
-    return scheduler.searchTasks(eventID).then( function(tasks) {
+    return scheduler.searchTasks(eventID, meta).then( function(tasks) {
         var runningJob;
 
         for ( var i = 0; i < tasks.length; i++ ) {
@@ -198,7 +198,7 @@ Worker.prototype.init = function init(_scheduler, handlers, options) {
     jobs.promote(1000);
 
     var addListener = function(eventQueueName) {
-        console.log('-->', eventQueueName);
+        jive.logger.debug('Subscribing to Redis event: ', eventQueueName);
         jobs.process(eventQueueName, options['concurrentJobs'] || 1000, eventExecutor);
     };
 
@@ -222,5 +222,4 @@ Worker.prototype.init = function init(_scheduler, handlers, options) {
     addListener( queueName + '.' + '__jive_system_tasks' + '.' + '__anonymous' );
 
 };
-
 

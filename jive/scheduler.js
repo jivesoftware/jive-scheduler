@@ -428,9 +428,9 @@ Scheduler.prototype.isScheduled = function(eventID) {
  * @param statuses - array of strings containing the job statuses we want (e.g. ['delayed']).
  * @returns {*}
  */
-Scheduler.prototype.searchTasks = function(eventID, statuses) {
+Scheduler.prototype.searchTasks = function(eventID, meta, statuses) {
     var deferred = q.defer();
-    searchJobsByQueueAndTypes(queueFor(eventID), statuses).then(function(tasks) {
+    searchJobsByQueueAndTypes(queueFor(eventID, meta), statuses).then(function(tasks) {
         deferred.resolve(findTasksInSet(eventID, tasks));
     });
     return deferred.promise;
@@ -440,17 +440,30 @@ Scheduler.prototype.searchTasks = function(eventID, statuses) {
  * Returns a promise which resolves with the jobs currently scheduled (recurrent or dormant)
  */
 Scheduler.prototype.getTasks = function getTasks() {
-    var foundJobs = [];
-    return searchJobsByQueueAndTypes(jobQueueName).then(function(jobs) {
-        if (jobs && jobs.length > 0) {
-            foundJobs = foundJobs.concat( jobs );
-        }
-        return searchJobsByQueueAndTypes(pushQueueName);
-    }).then(function(pushJobs) {
-        if (pushJobs && pushJobs.length > 0) {
-            foundJobs = foundJobs.concat( pushJobs );
-        }
-        return foundJobs;
+    return getQueues().then( function( queues ) {
+        queues = queues || [];
+        var promises = [];
+
+        queues.forEach( function( queue ) {
+            var promise = searchJobsByQueueAndTypes(queue).then(function(jobs) {
+                if (jobs && jobs.length > 0) {
+                    return jobs;
+                } else {
+                    return [];
+                }
+            });
+
+            promises.push( promise );
+        });
+
+        return q.all( promises).then( function(allJobs ) {
+            var jobsToReturn = [];
+            allJobs.forEach( function(jobset) {
+                jobsToReturn = jobsToReturn.concat( jobset );
+            });
+
+            return jobsToReturn;
+        });
     });
 };
 
@@ -460,3 +473,23 @@ Scheduler.prototype.shutdown = function(){
         scheduler.unschedule(job);
     });
 };
+
+function getQueues() {
+    var deferred = q.defer();
+    redisClient.keys("q:jobs:*", function (err, replies) {
+        var queues = [];
+        replies.forEach(function (reply, i) {
+            var parts = reply.split(':');
+            if ( parts.length > 3 ) {
+                var queueName = parts[2];
+                if ( queueName !== 'work' && queues.indexOf(queueName) < 0 ) {
+                    queues.push( queueName );
+                }
+            }
+        });
+
+        deferred.resolve( queues );
+    });
+
+    return deferred.promise;
+}
