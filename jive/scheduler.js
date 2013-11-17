@@ -274,6 +274,8 @@ function getQueues() {
 }
 
 function queueFor(meta) {
+    var eventID = meta['eventID'];
+
     var queueName;
     if (jive.events.pushQueueEvents.indexOf(eventID) != -1 ) {
         queueName = pushQueueName;
@@ -281,7 +283,6 @@ function queueFor(meta) {
         queueName = jobQueueName;
     }
 
-    var eventID = meta['eventID'];
     var eventListener;
     if ( meta['context'] ) {
         eventListener = meta['context']['eventListener'];
