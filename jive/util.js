@@ -22,8 +22,16 @@ exports.secondsElapsed = function( timestamp ) {
     return ( new Date().getTime() - timestamp ) / 1000;
 };
 
+exports.minutesElapsed = function( timestamp ) {
+    return ( ( new Date().getTime() - timestamp ) / 1000 ) / 60;
+};
+
 exports.hasSecondsElapsed = function( timestamp, seconds ) {
     return exports.secondsElapsed( timestamp ) > seconds;
+};
+
+exports.hasMinutesElapsed = function( timestamp, minutes ) {
+    return exports.minutesElapsed( timestamp ) > minutes;
 };
 
 exports.sec = function( seconds ) {
