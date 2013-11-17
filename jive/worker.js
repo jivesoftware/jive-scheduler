@@ -25,6 +25,7 @@ var q = require('q');
 var kue = require('kue');
 var redis = require('redis');
 var jive = require('jive-sdk');
+var util = require('./util');
 
 function Worker() {
 }
@@ -96,7 +97,7 @@ Worker.prototype.init = function init(_scheduler, handlers, options) {
 // helpers
 
 /**
- * Search the redis queue for the job, and if isn't currently among the active or
+ * Search the redis queue for the job, and if isn't currently among the active
  */
 function shouldRun( jobMetadata ) {
 
@@ -105,23 +106,10 @@ function shouldRun( jobMetadata ) {
     var exclusive = jobMetadata['exclusive'];
 
     if (!exclusive ) {
-        return q.resolve(true);
+        return q.resolve(false);
     }
 
-    return scheduler.searchTasks(jobMetadata, ['delayed','active','inactive']).then( function(tasks) {
-        var runningJob;
-
-        for ( var i = 0; i < tasks.length; i++ ) {
-            var task = tasks[i];
-            if ( task['data']['jobID'] !== jobID  ) {
-                runningJob = task['data']['jobID'] + " : " + task['data']['eventID'];
-                break;
-            }
-
-        }
-
-        return !runningJob;
-    } );
+    return util.isRunning(redisClient, eventID);
 }
 
 /**
@@ -130,8 +118,8 @@ function shouldRun( jobMetadata ) {
 function eventExecutor(job, done) {
     var meta = job.data;
 
-    shouldRun(meta).then( function(shouldRun) {
-
+    shouldRun(meta).then( function(isRunning) {
+        var shouldRun = !isRunning;
         var context = meta['context'];
         var eventID = meta['eventID'];
         var eventListener = context['eventListener'];
@@ -146,7 +134,10 @@ function eventExecutor(job, done) {
             if ( liveNess ) {
                 clearTimeout(liveNess);
             }
-            redisClient.set( eventID + ':lastSuccessfulRun', new Date().getTime(), function() {
+
+            util.markSuccessfulRun(redisClient, eventID).then( function() {
+                return util.stopRunning(redisClient, eventID);
+            }).then( function() {
                 done();
             });
         };
@@ -158,16 +149,22 @@ function eventExecutor(job, done) {
             done();
         };
 
+        // claim it once immediately
+        util.updateRunning( redisClient, eventID );
+
+        // update liveness every second
         var liveNess = setInterval( function() {
             // update the job every 1 seconds to ensure liveness
             job.update();
+
+            util.updateRunning( redisClient, eventID );
         }, 1000);
 
         var handlers;
         if (eventListener) {
             var tileEventHandlers = eventHandlers[eventListener];
             if ( !tileEventHandlers ) {
-                jive.logger.error("No event handler for " + eventListener + ", eventID " + eventID);
+                jive.logger.debug("No event handler for " + eventListener + ", eventID " + eventID);
                 abort();
                 return;
             }

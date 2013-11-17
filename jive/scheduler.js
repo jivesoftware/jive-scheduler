@@ -28,6 +28,7 @@ var pushQueueName = 'push';
 var scheduleLocalTasks = false;
 var localTasks = {};
 var reaper = require('./tasks/reaper');
+var cleanupStuckJobs = require('./tasks/cleanupStuckJobs');
 var util = require('./util');
 
 function Scheduler(options) {
@@ -78,8 +79,9 @@ Scheduler.prototype.init = function init( _eventHandlerMap, serviceConfig ) {
         });
     });
 
-    // schedule a periodic reaper task
+    // schedule periodic tasks
     self.schedule(reaper.taskName, {}, util.min(5) );
+    self.schedule(cleanupStuckJobs.taskName, {}, util.min(5) );
 
     jive.logger.info("Redis Scheduler Initialized for queue");
 };
@@ -181,46 +183,15 @@ Scheduler.prototype.unschedule = function unschedule(eventID){
 };
 
 /**
- * Returns a promise indicating if the event is already scheduled
- * @param eventID
- */
-Scheduler.prototype.isScheduled = function(eventID) {
-    var deferred = q.defer();
-    this.getTasks().then(function(tasks) {
-        var found = false;
-        if (findTasksInSet(eventID, tasks).length > 0) {
-            found = true;
-        }
-        deferred.resolve(found);
-    });
-    return deferred.promise;
-};
-
-/**
- * Search only tasks with one of the given statuses for a task with the given eventID.
- * @param meta - metadata for task to search for
- * @param statuses - array of strings containing the job statuses we want (e.g. ['delayed']).
- * @returns {*}
- */
-Scheduler.prototype.searchTasks = function( meta, statuses) {
-    var deferred = q.defer();
-    var eventID = meta['eventID'];
-    searchJobsByQueueAndTypes(queueFor(meta), statuses).then(function(tasks) {
-        deferred.resolve(findTasksInSet(eventID, tasks));
-    });
-    return deferred.promise;
-};
-
-/**
  * Returns a promise which resolves with the jobs currently scheduled (recurrent or dormant)
  */
 Scheduler.prototype.getTasks = function getTasks() {
-    return getQueues().then( function( queues ) {
+    return util.getQueues().then( function( queues ) {
         queues = queues || [];
         var promises = [];
 
         queues.forEach( function( queue ) {
-            var promise = searchJobsByQueueAndTypes(queue).then(function(jobs) {
+            var promise = util.searchJobsByQueueAndTypes(queue).then(function(jobs) {
                 if (jobs && jobs.length > 0) {
                     return jobs;
                 } else {
@@ -253,26 +224,6 @@ Scheduler.prototype.shutdown = function(){
 ///////////////////////////////////////////////////////////////////////////////////////////////
 // private helpers
 
-function getQueues() {
-    var deferred = q.defer();
-    redisClient.keys("q:jobs:*", function (err, replies) {
-        var queues = [];
-        replies.forEach(function (reply, i) {
-            var parts = reply.split(':');
-            if ( parts.length > 3 ) {
-                var queueName = parts[2];
-                if ( queueName !== 'work' && queues.indexOf(queueName) < 0 ) {
-                    queues.push( queueName );
-                }
-            }
-        });
-
-        deferred.resolve( queues );
-    });
-
-    return deferred.promise;
-}
-
 function queueFor(meta) {
     var eventID = meta['eventID'];
 
@@ -294,111 +245,6 @@ function queueFor(meta) {
 
     queueName = queueName + ( eventListener ? ('.' + eventListener) : '' ) + '.' + eventID;
     return queueName;
-}
-
-function removeJob( job ) {
-    var deferred = q.defer();
-    job.remove(function() {
-        jive.logger.debug('job', job.id, job['data']['eventID'], 'expired, removed');
-        deferred.resolve();
-    });
-
-    return deferred.promise;
-}
-
-function failJob( job ) {
-    // putting things in failed state can result in wierdness ....
-
-//    if ( job._state == 'failed' ) {
-//        return removeJob(job);
-//    }
-
-    job.complete();
-    if ( util.hasSecondsElapsed(job.created_at, 10 * 60) ) {
-        // try to destroy now, more than 10 minutes old
-        return removeJob(job);
-    }
-
-    jive.logger.debug('job', job.id, job['data']['eventID'], 'expired, marked complete');
-    return q.resolve();
-}
-
-function cleanUpStuckActiveJobs(activeJobs) {
-    var deferred = q.defer();
-    var nonStuckJobs = [];
-    var promises = [];
-    activeJobs.forEach(function(job) {
-        if ( util.hasSecondsElapsed( job.updated_at, 20) ) {
-            // jobs shouldn't be inactive for more than 20 seconds
-            promises.push(failJob(job));
-        } else {
-            nonStuckJobs.push(job);
-        }
-    });
-
-    q.all(promises).finally( function() {
-        deferred.resolve(nonStuckJobs);
-    });
-
-    return deferred.promise;
-}
-
-/**
- * Return all jobs in the given queue that have one of the given states.
- * @param queueName - name of the queue
- * @param types - array of strings containing the job statuses we want (e.g. ['delayed']).
- * @returns a promise for an array of jobs.
- */
-function searchJobsByQueueAndTypes(queueName, types) {
-    var deferred = q.defer();
-    if (!types) {
-        types = ['delayed','active','inactive'];
-    }
-    if (!types.forEach) {
-        types = [types];
-    }
-    var promises = [];
-    types.forEach(function(type) {
-        var defer = q.defer();
-        promises.push(defer.promise);
-
-        kue.Job.rangeByType(queueName, type, 0, -1, 'asc', function (err, jobs) {
-            if (err) {
-                jive.logger.error(err);
-                process.exit(-1);
-            } else {
-                if ( type == 'active' ) {
-                    cleanUpStuckActiveJobs(jobs).then( function(nonStuckJobs) {
-                        defer.resolve(nonStuckJobs);
-                    });
-                } else {
-                    defer.resolve(jobs);
-                }
-            }
-        });
-
-    });
-    q.all(promises).then(function(jobArrays) {
-        deferred.resolve(jobArrays.reduce(function(prev, curr) {
-            return prev.concat(curr);
-        }, []));
-    }, function(err) {
-        deferred.reject(err);
-    }).catch( function(e){
-            jive.logger.error(e);
-        });
-    return deferred.promise;
-}
-
-function findTasksInSet(eventID, tasks) {
-    var found = [];
-    for ( var i = 0; i < tasks.length; i++ ) {
-        var job = tasks[i];
-        if (job.data['eventID'] == eventID) {
-            found.push(job);
-        }
-    }
-    return found;
 }
 
 function setupKue(options) {
@@ -436,12 +282,11 @@ function scheduleLocalRecurrentTask(delay, self, eventID, context, interval, tim
     // evaluate the event last succcessful run time; if its before interval is up
     // then prevent locally scheduled job from being scheduled
     var execute = function() {
-        redisClient.get( eventID + ':lastSuccessfulRun', function(err, result) {
-
+        util.getLastSuccessfulRun(redisClient, eventID).then( function(result) {
             var elapsed = (new Date().getTime()) - result;  // in millseconds
-            if ( err || !result || ( elapsed >= interval ) ) {
-                self.isScheduled(eventID).then(function (scheduled) {
-                    if (!scheduled) {
+            if ( elapsed >= interval ) {
+                util.isRunning(redisClient, eventID).then(function (running) {
+                    if (!running) {
                         jive.logger.info('scheduling', eventID);
                         var schedule = self.schedule(eventID, context, undefined, undefined, true, timeout);
                         if ( schedule ) {
@@ -456,7 +301,7 @@ function scheduleLocalRecurrentTask(delay, self, eventID, context, interval, tim
                             setTimeout( execute, interval );
                         }
                     } else {
-                        jive.logger.debug("Skipping schedule of " + eventID, " - Already scheduled");
+                        jive.logger.debug("Skipping schedule of " + eventID, " - Already running");
                         setTimeout( execute, interval );
                     }
                 });
@@ -474,5 +319,8 @@ function scheduleLocalRecurrentTask(delay, self, eventID, context, interval, tim
 }
 
 function setupCleanupTasks(eventHandlerMap) {
-    eventHandlerMap['jive.reaper'] = reaper.execute;
+    eventHandlerMap[reaper.taskName] = reaper.execute;
+    eventHandlerMap[cleanupStuckJobs.taskName] = function() {
+        cleanupStuckJobs.execute(redisClient);
+    }
 }
