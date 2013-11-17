@@ -36,19 +36,74 @@ var scheduler;
 var queueName;
 
 ///////////////////////////////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////////////////////
+// public
+
+module.exports = Worker;
+
+Worker.prototype.makeRedisClient = function(options) {
+    if (options && options['redisLocation'] && options['redisPort']) {
+        return redis.createClient(options['redisPort'], options['redisLocation']);
+    }
+
+    return redis.createClient();
+};
+
+Worker.prototype.init = function init(_scheduler, handlers, options) {
+    scheduler = _scheduler;
+    eventHandlers = handlers;
+    queueName = options['queueName'];
+    var self = this;
+    kue.redis.createClient = function() {
+        return self.makeRedisClient(options);
+    };
+    redisClient = self.makeRedisClient(options);
+    jobs = kue.createQueue();
+    jobs.promote(1000);
+
+    var addQueueListener = function(eventQueueName) {
+        jive.logger.info('Subscribing to Redis event: ', eventQueueName);
+        jobs.process(eventQueueName, options['concurrentJobs'] || 1000, eventExecutor);
+    };
+
+    // analyze event listeners and listen on redis queue for events on them
+    for (var eventListener in eventHandlers) {
+        if (eventHandlers.hasOwnProperty(eventListener)) {
+            var listeners = eventHandlers[eventListener];
+            if ( typeof listeners === 'function' ) {
+                addQueueListener(queueName + '.' + eventListener);
+            } else if (typeof listeners === 'object' ) {
+                for ( var eventID in listeners ) {
+                    if ( listeners.hasOwnProperty(eventID) ) {
+                        addQueueListener(queueName + '.' + eventListener + '.' + eventID);
+                    }
+                }
+            }
+        }
+    }
+
+    // also listen to anonymous system tasks
+    addQueueListener( queueName + '.' + '__jive_system_tasks' );
+};
+
+///////////////////////////////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////////////////////
 // helpers
 
-function shouldRun( meta ) {
+/**
+ * Search the redis queue for the job, and if isn't currently among the active or
+ */
+function shouldRun( jobMetadata ) {
 
-    var eventID = meta['eventID'];
-    var jobID = meta['jobID'];
-    var exclusive = meta['exclusive'];
+    var eventID = jobMetadata['eventID'];
+    var jobID = jobMetadata['jobID'];
+    var exclusive = jobMetadata['exclusive'];
 
     if (!exclusive ) {
         return q.resolve(true);
     }
 
-    return scheduler.searchTasks(eventID, meta).then( function(tasks) {
+    return scheduler.searchTasks(jobMetadata, ['delayed','active','inactive']).then( function(tasks) {
         var runningJob;
 
         for ( var i = 0; i < tasks.length; i++ ) {
@@ -70,7 +125,6 @@ function shouldRun( meta ) {
 function eventExecutor(job, done) {
     var meta = job.data;
 
-
     shouldRun(meta).then( function(shouldRun) {
 
         var context = meta['context'];
@@ -87,7 +141,7 @@ function eventExecutor(job, done) {
             if ( liveNess ) {
                 clearTimeout(liveNess);
             }
-            redisClient.set( eventID + ':lastrun', new Date().getTime(), function() {
+            redisClient.set( eventID + ':lastSuccessfulRun', new Date().getTime(), function() {
                 done();
             });
         };
@@ -172,54 +226,3 @@ function eventExecutor(job, done) {
         }
     });
 }
-
-///////////////////////////////////////////////////////////////////////////////////////////////
-// public
-module.exports = Worker;
-
-Worker.prototype.makeRedisClient = function(options) {
-    if (options && options['redisLocation'] && options['redisPort']) {
-        return redis.createClient(options['redisPort'], options['redisLocation']);
-    }
-
-    return redis.createClient();
-};
-
-Worker.prototype.init = function init(_scheduler, handlers, options) {
-    scheduler = _scheduler;
-    eventHandlers = handlers;
-    queueName = options['queueName'];
-    var self = this;
-    kue.redis.createClient = function() {
-        return self.makeRedisClient(options);
-    };
-    redisClient = self.makeRedisClient(options);
-    jobs = kue.createQueue();
-    jobs.promote(1000);
-
-    var addListener = function(eventQueueName) {
-        jive.logger.info('Subscribing to Redis event: ', eventQueueName);
-        jobs.process(eventQueueName, options['concurrentJobs'] || 1000, eventExecutor);
-    };
-
-    // analyze event listeners and listen on redis queue for events on them
-    for (var eventListener in eventHandlers) {
-        if (eventHandlers.hasOwnProperty(eventListener)) {
-            var listeners = eventHandlers[eventListener];
-            if ( typeof listeners === 'function' ) {
-                addListener(queueName + '.' + eventListener);
-            } else if (typeof listeners === 'object' ) {
-                for ( var eventID in listeners ) {
-                    if ( listeners.hasOwnProperty(eventID) ) {
-                        addListener(queueName + '.' + eventListener + '.' + eventID);
-                    }
-                }
-            }
-        }
-    }
-
-    // also listen to anonymous system tasks
-    addListener( queueName + '.' + '__jive_system_tasks' + '.' + '__anonymous' );
-
-};
-
