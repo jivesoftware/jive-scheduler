@@ -79,7 +79,7 @@ Scheduler.prototype.init = function init( _eventHandlerMap, serviceConfig ) {
     });
 
     // schedule a periodic reaper task
-    self.schedule(reaper.taskName, {}, util.sec(10), util.sec(10), false, util.sec(60) );
+    self.schedule(reaper.taskName, {}, util.min(5) );
 
     jive.logger.info("Redis Scheduler Initialized for queue");
 };

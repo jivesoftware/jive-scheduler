@@ -73,9 +73,14 @@ Worker.prototype.init = function init(_scheduler, handlers, options) {
             if ( typeof listeners === 'function' ) {
                 addQueueListener(queueName + '.' + eventListener);
             } else if (typeof listeners === 'object' ) {
-                for ( var eventID in listeners ) {
-                    if ( listeners.hasOwnProperty(eventID) ) {
-                        addQueueListener(queueName + '.' + eventListener + '.' + eventID);
+                if ( typeof listeners['forEach'] === 'function' ) {
+                    // its really an array
+                    addQueueListener(queueName + '.' + eventListener );
+                } else {
+                    for ( var eventID in listeners ) {
+                        if ( listeners.hasOwnProperty(eventID) ) {
+                            addQueueListener(queueName + '.' + eventListener + '.' + eventID);
+                        }
                     }
                 }
             }

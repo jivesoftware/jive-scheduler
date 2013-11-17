@@ -30,6 +30,10 @@ exports.sec = function( seconds ) {
     return seconds * 1000;
 };
 
+exports.min = function( minutes ) {
+    return exports.sec( minutes * 60 );
+};
+
 exports.removeJob = function( kueJob ) {
     var deferred = q.defer();
     kueJob.remove(function() {

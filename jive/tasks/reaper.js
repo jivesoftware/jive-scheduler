@@ -36,7 +36,7 @@ exports.execute = function() {
         if ( jobs ) {
             jobs.forEach( function(job) {
                 var elapsed = util.secondsElapsed( job.created_at );
-                if ( elapsed > (10 * 60) ) {
+                if ( elapsed > util.min(10) ) {
                     // if completed more than 10 minutes ago, nuke it
                     promises.push( util.removeJob(job) );
                 }
