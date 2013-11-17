@@ -34,228 +34,6 @@ function Scheduler(options) {
 module.exports = Scheduler;
 
 ///////////////////////////////////////////////////////////////////////////////////////////////
-// private helpers
-
-var queueFor = function(eventID, meta) {
-    var queueName;
-    if (jive.events.pushQueueEvents.indexOf(eventID) != -1 ) {
-        queueName = pushQueueName;
-    } else {
-        queueName = jobQueueName;
-    }
-
-    var eventListener;
-    if ( meta && meta['context'] ) {
-        eventListener = meta['context']['eventListener'];
-    }
-
-    queueName = queueName + ( eventListener ? ('.' + eventListener) : '' ) + '.' + eventID;
-    return queueName;
-};
-
-var removeJob = function( job ) {
-    var deferred = q.defer();
-    job.remove(function() {
-        jive.logger.warn('job', job.id, job['data']['eventID'], 'expired, removed');
-        deferred.resolve();
-    });
-
-    return deferred.promise;
-};
-
-var failJob = function( job ) {
-    // putting things in failed state can result in wierdness ....
-
-//    if ( job._state == 'failed' ) {
-//        return removeJob(job);
-//    }
-
-    job.complete();
-    var elapsed = ( new Date().getTime() - job.created_at ) / 1000;
-    if ( elapsed > 10 * 60 ) {
-        // try to destroy now, more than 10 minutes old
-        return removeJob(job);
-    }
-
-    jive.logger.warn('job', job.id, job['data']['eventID'], 'expired, marked complete');
-    return q.resolve();
-};
-
-var cleanUpStuckActiveJobs = function(deferred, activeJobs) {
-    var acceptedJobs = [];
-    var promises = [];
-    activeJobs.forEach(function(job) {
-
-        var elapsed = ( new Date().getTime() - job.updated_at ) / 1000;
-        if ( elapsed > 20 ) {
-            // jobs shouldn't be inactive for more than 20 seconds
-            promises.push(failJob(job));
-        } else {
-            acceptedJobs.push(job);
-        }
-    });
-
-    q.all(promises).finally( function() {
-        deferred.resolve(acceptedJobs);
-    });
-
-    return deferred.promise;
-};
-
-/**
- * Return all jobs in the given queue that have one of the given states.
- * @param queueName - name of the queue
- * @param types - array of strings containing the job statuses we want (e.g. ['delayed']).
- * @returns a promise for an array of jobs.
- */
-var searchJobsByQueueAndTypes = function(queueName, types) {
-    var deferred = q.defer();
-    if (!types) {
-        types = ['delayed','active','inactive'];
-    }
-    if (!types.forEach) {
-        types = [types];
-    }
-    var promises = [];
-    types.forEach(function(type) {
-        var defer = q.defer();
-        promises.push(defer.promise);
-
-        kue.Job.rangeByType(queueName, type, 0, -1, 'asc', function (err, jobs) {
-            if (err) {
-                jive.logger.error(err);
-                process.exit(-1);
-            } else {
-                if ( type == 'active' ) {
-                    cleanUpStuckActiveJobs(deferred, jobs);
-                } else {
-                    defer.resolve(jobs);
-                }
-            }
-        });
-
-    });
-    q.all(promises).then(function(jobArrays) {
-        deferred.resolve(jobArrays.reduce(function(prev, curr) {
-            return prev.concat(curr);
-        }, []));
-    }, function(err) {
-        deferred.reject(err);
-    });
-    return deferred.promise;
-};
-
-var findTasksInSet = function(eventID, tasks) {
-    var found = [];
-    for ( var i = 0; i < tasks.length; i++ ) {
-        var job = tasks[i];
-        if (job.data['eventID'] == eventID) {
-            found.push(job);
-        }
-    }
-    return found;
-};
-
-var setupKue = function(options) {
-    options = options || {};
-    //set up kue, optionally with a custom redis location.
-    redisClient = new worker().makeRedisClient(options);
-    kue.redis.createClient = function() {
-        return new worker().makeRedisClient(options);
-    };
-    jobs = kue.createQueue();
-    jobs.promote(1000);
-    return options;
-};
-
-var scheduleLocalRecurrentTask = function(delay, self, eventID, context, interval, timeout) {
-    if ( !scheduleLocalTasks ) {
-        return;
-    }
-
-    if ( localTasks[eventID] ) {
-        jive.logger.debug("Event", eventID, "already scheduled, skipping.");
-        return;
-    }
-
-    // evaluate the event last ran; if its before interval is up
-    // then prevent locally scheduled job from being scheduled
-    var execute = function() {
-        redisClient.get( eventID + ':lastrun', function(err, result) {
-
-            var now = new Date().getTime();
-            var elapsed = now - result;
-            if ( err || !result || ( elapsed >= interval ) ) {
-                self.isScheduled(eventID).then(function (scheduled) {
-                    if (!scheduled) {
-                        jive.logger.info('scheduling', eventID);
-                        var schedule = self.schedule(eventID, context, undefined, undefined, true, timeout);
-                        if ( schedule ) {
-                            schedule.then( function(result) {
-                                jive.logger.info('job', eventID,'done');
-                            }, function(err) {
-                                jive.logger.debug("job " + eventID, " failed: " + err);
-                            }).finally( function() {
-                                setTimeout( execute, interval );
-                            });
-                        } else {
-                            setTimeout( execute, interval );
-                        }
-                    } else {
-                        jive.logger.debug("Skipping schedule of " + eventID, " - Already scheduled");
-                        setTimeout( execute, interval );
-                    }
-                });
-            } else {
-                setTimeout( execute, interval );
-            }
-        });
-    };
-
-    setTimeout(function () {
-        execute();
-    }, delay || interval || 1);
-
-    localTasks[eventID] = true;
-};
-
-function setupCleanupTasks(_eventHandlerMap) {
-    // kue specific cleanup job that should run periodically
-    // to reap the job result records in redis
-    _eventHandlerMap['jive.reaper'] = function() {
-        var deferred = q.defer();
-        jive.logger.debug("Running reaper");
-        kue.Job.rangeByState('complete', 0, -1, 'asc', function (err, jobs) {
-            if ( err) {
-                jive.logger.error(err);
-                process.exit(-1);
-            }
-            var promises = [];
-            if ( jobs ) {
-                jobs.forEach( function(job) {
-                    var elapsed = ( new Date().getTime() - job.created_at ) / 1000;
-                    if ( elapsed > (10 * 60) ) {
-                        // if completed more than 10 minutes ago, nuke it
-                        promises.push( removeJob(job) );
-                    }
-                });
-            }
-
-            if ( promises.length > 0 ) {
-                q.all(promises).then( function() {
-                    jive.logger.info("Reaper task cleaned up", promises.length);
-                }).finally(function() {
-                        deferred.resolve();
-                    });
-            } else {
-                jive.logger.debug("Cleaned up nothing");
-                deferred.resolve();
-            }
-        });
-        return deferred.promise;
-    };
-}
-
 ///////////////////////////////////////////////////////////////////////////////////////////////
 // public
 
@@ -332,11 +110,9 @@ Scheduler.prototype.schedule = function schedule(eventID, context, interval, del
         'context' : context,
         'interval': interval,
         'delay'   : delay,
-        'timeout' : timeout
+        'timeout' : timeout,
+        'exclusive' : exclusive
     };
-    if ( exclusive ) {
-        meta['exclusive'] = true;
-    }
 
     var job = jobs.create(queueFor(eventID, meta), meta);
     if ( interval || delay ) {
@@ -345,7 +121,7 @@ Scheduler.prototype.schedule = function schedule(eventID, context, interval, del
 
     var timeoutWatcher = setTimeout( function() {
         // jobs should not take more than 5 minutes
-        jive.logger.debug("Failed jobID " + meta['jobID'] + " eventID " + eventID + " due to timeout");
+        jive.logger.warn("Failed jobID " + meta['jobID'] + " eventID " + eventID + " due to timeout");
         job.failed();
 
         deferred.resolve();
@@ -474,6 +250,10 @@ Scheduler.prototype.shutdown = function(){
     });
 };
 
+///////////////////////////////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////////////////////
+// private helpers
+
 function getQueues() {
     var deferred = q.defer();
     redisClient.keys("q:jobs:*", function (err, replies) {
@@ -493,3 +273,234 @@ function getQueues() {
 
     return deferred.promise;
 }
+
+function queueFor(eventID, meta) {
+    var queueName;
+    if (jive.events.pushQueueEvents.indexOf(eventID) != -1 ) {
+        queueName = pushQueueName;
+    } else {
+        queueName = jobQueueName;
+    }
+
+    var eventListener;
+    if ( meta && meta['context'] ) {
+        eventListener = meta['context']['eventListener'];
+    }
+
+    queueName = queueName + ( eventListener ? ('.' + eventListener) : '' ) + '.' + eventID;
+    return queueName;
+}
+
+function removeJob( job ) {
+    var deferred = q.defer();
+    job.remove(function() {
+        jive.logger.debug('job', job.id, job['data']['eventID'], 'expired, removed');
+        deferred.resolve();
+    });
+
+    return deferred.promise;
+}
+
+function failJob( job ) {
+    // putting things in failed state can result in wierdness ....
+
+//    if ( job._state == 'failed' ) {
+//        return removeJob(job);
+//    }
+
+    job.complete();
+    if ( hasSecondsElapsed(job.created_at, 10 * 60) ) {
+        // try to destroy now, more than 10 minutes old
+        return removeJob(job);
+    }
+
+    jive.logger.debug('job', job.id, job['data']['eventID'], 'expired, marked complete');
+    return q.resolve();
+}
+
+function cleanUpStuckActiveJobs(activeJobs) {
+    var deferred = q.defer();
+    var nonStuckJobs = [];
+    var promises = [];
+    activeJobs.forEach(function(job) {
+        if ( hasSecondsElapsed( job.updated_at, 20) ) {
+            // jobs shouldn't be inactive for more than 20 seconds
+            promises.push(failJob(job));
+        } else {
+            nonStuckJobs.push(job);
+        }
+    });
+
+    q.all(promises).finally( function() {
+        deferred.resolve(nonStuckJobs);
+    });
+
+    return deferred.promise;
+}
+
+/**
+ * Return all jobs in the given queue that have one of the given states.
+ * @param queueName - name of the queue
+ * @param types - array of strings containing the job statuses we want (e.g. ['delayed']).
+ * @returns a promise for an array of jobs.
+ */
+function searchJobsByQueueAndTypes(queueName, types) {
+    var deferred = q.defer();
+    if (!types) {
+        types = ['delayed','active','inactive'];
+    }
+    if (!types.forEach) {
+        types = [types];
+    }
+    var promises = [];
+    types.forEach(function(type) {
+        var defer = q.defer();
+        promises.push(defer.promise);
+
+        kue.Job.rangeByType(queueName, type, 0, -1, 'asc', function (err, jobs) {
+            if (err) {
+                jive.logger.error(err);
+                process.exit(-1);
+            } else {
+                if ( type == 'active' ) {
+                    cleanUpStuckActiveJobs(jobs).then( function(nonStuckJobs) {
+                        defer.resolve(nonStuckJobs);
+                    });
+                } else {
+                    defer.resolve(jobs);
+                }
+            }
+        });
+
+    });
+    q.all(promises).then(function(jobArrays) {
+        deferred.resolve(jobArrays.reduce(function(prev, curr) {
+            return prev.concat(curr);
+        }, []));
+    }, function(err) {
+        deferred.reject(err);
+    }).catch( function(e){
+            jive.logger.error(e);
+        });
+    return deferred.promise;
+}
+
+function findTasksInSet(eventID, tasks) {
+    var found = [];
+    for ( var i = 0; i < tasks.length; i++ ) {
+        var job = tasks[i];
+        if (job.data['eventID'] == eventID) {
+            found.push(job);
+        }
+    }
+    return found;
+}
+
+function setupKue(options) {
+    options = options || {};
+    //set up kue, optionally with a custom redis location.
+    redisClient = new worker().makeRedisClient(options);
+    kue.redis.createClient = function() {
+        return new worker().makeRedisClient(options);
+    };
+    jobs = kue.createQueue();
+    jobs.promote(1000);
+    return options;
+}
+
+function scheduleLocalRecurrentTask(delay, self, eventID, context, interval, timeout) {
+    if ( !scheduleLocalTasks ) {
+        return;
+    }
+
+    if ( localTasks[eventID] ) {
+        jive.logger.debug("Event", eventID, "already scheduled, skipping.");
+        return;
+    }
+
+    // evaluate the event last ran; if its before interval is up
+    // then prevent locally scheduled job from being scheduled
+    var execute = function() {
+        redisClient.get( eventID + ':lastrun', function(err, result) {
+
+            var now = new Date().getTime();
+            var elapsed = now - result;
+            if ( err || !result || ( elapsed >= interval ) ) {
+                self.isScheduled(eventID).then(function (scheduled) {
+                    if (!scheduled) {
+                        jive.logger.info('scheduling', eventID);
+                        var schedule = self.schedule(eventID, context, undefined, undefined, true, timeout);
+                        if ( schedule ) {
+                            schedule.then( function(result) {
+                                jive.logger.debug('job', eventID,'done');
+                            }, function(err) {
+                                jive.logger.debug("job " + eventID, " failed: " + err);
+                            }).finally( function() {
+                                    setTimeout( execute, interval );
+                                });
+                        } else {
+                            setTimeout( execute, interval );
+                        }
+                    } else {
+                        jive.logger.debug("Skipping schedule of " + eventID, " - Already scheduled");
+                        setTimeout( execute, interval );
+                    }
+                });
+            } else {
+                setTimeout( execute, interval );
+            }
+        });
+    };
+
+    setTimeout(function () {
+        execute();
+    }, delay || interval || 1);
+
+    localTasks[eventID] = true;
+}
+
+function setupCleanupTasks(_eventHandlerMap) {
+    // kue specific cleanup job that should run periodically
+    // to reap the job result records in redis
+    _eventHandlerMap['jive.reaper'] = function() {
+        var deferred = q.defer();
+        jive.logger.debug("Running reaper");
+        kue.Job.rangeByState('complete', 0, -1, 'asc', function (err, jobs) {
+            if ( err) {
+                jive.logger.error(err);
+                process.exit(-1);
+            }
+            var promises = [];
+            if ( jobs ) {
+                jobs.forEach( function(job) {
+                    var elapsed = secondsElapsed( job.created_at );
+                    if ( elapsed > (10 * 60) ) {
+                        // if completed more than 10 minutes ago, nuke it
+                        promises.push( removeJob(job) );
+                    }
+                });
+            }
+
+            if ( promises.length > 0 ) {
+                q.all(promises).then( function() {
+                    jive.logger.info("Reaper task cleaned up", promises.length);
+                }).finally(function() {
+                        deferred.resolve();
+                    });
+            } else {
+                jive.logger.info("Cleaned up nothing");
+                deferred.resolve();
+            }
+        });
+        return deferred.promise;
+    };
+}
+
+function secondsElapsed( timestamp ) {
+   return ( new Date().getTime() - timestamp ) / 1000;
+}
+
+function hasSecondsElapsed( timestamp, seconds ) {
+    return secondsElapsed( timestamp ) > seconds;
+}
+

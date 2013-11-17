@@ -198,7 +198,7 @@ Worker.prototype.init = function init(_scheduler, handlers, options) {
     jobs.promote(1000);
 
     var addListener = function(eventQueueName) {
-        jive.logger.debug('Subscribing to Redis event: ', eventQueueName);
+        jive.logger.info('Subscribing to Redis event: ', eventQueueName);
         jobs.process(eventQueueName, options['concurrentJobs'] || 1000, eventExecutor);
     };
 
