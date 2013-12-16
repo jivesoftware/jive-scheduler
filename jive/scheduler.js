@@ -42,6 +42,7 @@ module.exports = Scheduler;
 
 /**
  * Initialize the scheduler
+ *
  * @param _eventHandlerMap - an object that translates eventIDs into functions to run
  * @param serviceConfig - configuration options such as the location of the redis server.
  */
