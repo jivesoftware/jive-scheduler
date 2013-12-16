@@ -50,7 +50,11 @@ Worker.prototype.makeRedisClient = function(options) {
     return redis.createClient();
 };
 
-Worker.prototype.init = function init(_scheduler, handlers, options) {
+Worker.prototype.init = function init(_scheduler, handlers, options, _jive) {
+    if (_jive ) {
+        jive = _jive;
+    }
+
     scheduler = _scheduler;
     eventHandlers = handlers;
     queueName = options['queueName'];

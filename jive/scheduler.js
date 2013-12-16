@@ -45,7 +45,12 @@ module.exports = Scheduler;
  * @param _eventHandlerMap - an object that translates eventIDs into functions to run
  * @param serviceConfig - configuration options such as the location of the redis server.
  */
-Scheduler.prototype.init = function init( _eventHandlerMap, serviceConfig ) {
+Scheduler.prototype.init = function init( _eventHandlerMap, serviceConfig, _jive ) {
+    // replace scheduler jive instance with passed in jive
+    if ( _jive ) {
+        jive = _jive;
+    }
+
     eventHandlerMap = _eventHandlerMap || jive.events.eventHandlerMap;
 
     var self = this;
@@ -62,12 +67,12 @@ Scheduler.prototype.init = function init( _eventHandlerMap, serviceConfig ) {
 
     if ( isWorker ) {
         opts['queueName'] = jobQueueName;
-        new worker().init(this, eventHandlerMap, opts);
+        new worker().init(this, eventHandlerMap, opts, jive);
     }
 
     if ( isPusher ) {
         opts['queueName'] = pushQueueName;
-        new worker().init(this, eventHandlerMap, opts);
+        new worker().init(this, eventHandlerMap, opts, jive);
     }
 
     scheduleLocalTasks = isWorker;
