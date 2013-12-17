@@ -119,6 +119,9 @@ exports.getLastSuccessfulRun = function(redisClient, eventID ) {
 
 exports.getQueues = function(redisClient) {
     var deferred = q.defer();
+    if ( !redisClient ) {
+        return q.resolve();
+    }
     redisClient.keys("q:jobs:*", function (err, replies) {
         var queues = [];
         replies.forEach(function (reply, i) {

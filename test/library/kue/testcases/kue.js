@@ -1,69 +1,151 @@
 var assert = require('assert');
-var test = require('../basePersistenceTest');
+var q = require('q');
+var tests = require('../baseSchedulerTest');
 
 describe('jive', function () {
 
-    describe ('#persistence.mongo', function () {
+    describe('scheduler', function () {
 
-        it('save', function (done) {
+        it('testSimpleSingleEvent', function (done) {
             var jive = this['jive'];
             var testUtils = this['testUtils'];
-            var persistence = this['persistence'];
 
-            test.testSave(testUtils, persistence).then(
-                function() {
-                    setTimeout( function() {
-                        done();
-                    }, 1000);
-                },
-
-                function(e) {
-                    assert.fail(e);
-                }
-            ).finally( function() {
-                    return persistence.close();
-                });
+            var scheduler = jive.service.scheduler(new this['jiveKue']());
+            tests.testSimpleSingleEvent(jive, testUtils, scheduler).then( function() {
+                done();
+            }, function() {
+                assert.fail()
+            }).finally( function() {
+                scheduler.shutdown();
+            });
         });
 
-        it('find', function (done) {
+        it('testSimpleIntervalEvent', function (done) {
             var jive = this['jive'];
             var testUtils = this['testUtils'];
-            var persistence = this['persistence'];
 
-            test.testFind(testUtils, persistence).then(
-                function() {
-                    setTimeout( function() {
-                        done();
-                    }, 1000);
-                },
-
-                function(e) {
-                    assert.fail(e);
-                }
-            ).finally( function() {
-                    return persistence.close();
-                });
+            var scheduler = jive.service.scheduler(new this['jiveKue']());
+            tests.testSimpleIntervalEvent(jive, testUtils, scheduler).then( function() {
+                done();
+            }, function() {
+                assert.fail()
+            }).finally( function() {
+                scheduler.shutdown();
+            });
         });
 
-        it('remove', function (done) {
+        it('testSingleEventWithDelay', function (done) {
             var jive = this['jive'];
             var testUtils = this['testUtils'];
-            var persistence = this['persistence'];
 
-            test.testRemove(testUtils, persistence).then(
-                function() {
-                    done();
-                },
-
-                function(e) {
-                    assert.fail(e);
-                }
-            ).finally( function() {
-                    return persistence.close();
-                });
+            var scheduler = jive.service.scheduler(new this['jiveKue']());
+            tests.testSingleEventWithDelay(jive, testUtils, scheduler).then( function() {
+                done();
+            }, function() {
+                assert.fail()
+            }).finally( function() {
+                scheduler.shutdown();
+            });
         });
 
-        // xxx todo
+        it('testIntervalEventWithDelay', function (done) {
+            var jive = this['jive'];
+            var testUtils = this['testUtils'];
+
+            var scheduler = jive.service.scheduler(new this['jiveKue']());
+            tests.testIntervalEventWithDelay(jive, testUtils, scheduler).then( function() {
+                done();
+            }, function() {
+                assert.fail()
+            }).finally( function() {
+                scheduler.shutdown();
+            });
+        });
+
+        it('testSingleEventTimeout', function (done) {
+            var jive = this['jive'];
+            var testUtils = this['testUtils'];
+
+            var scheduler = jive.service.scheduler(new this['jiveKue']());
+            tests.testSingleEventTimeout(jive, testUtils, scheduler).then( function() {
+                done();
+            }, function() {
+                assert.fail()
+            }).finally( function() {
+                scheduler.shutdown();
+            });
+        });
+
+        it('testIntervalEventTimeout', function (done) {
+            var jive = this['jive'];
+            var testUtils = this['testUtils'];
+
+            var scheduler = jive.service.scheduler(new this['jiveKue']());
+            tests.testIntervalEventTimeout(jive, testUtils, scheduler).then( function() {
+                done();
+            }, function() {
+                assert.fail()
+            }).finally( function() {
+                scheduler.shutdown();
+            });
+        });
+
+        it('testOverlappingIntervalEvents', function (done) {
+            var jive = this['jive'];
+            var testUtils = this['testUtils'];
+
+            var scheduler = jive.service.scheduler(new this['jiveKue']());
+            tests.testOverlappingIntervalEvents(jive, testUtils, scheduler).then( function() {
+                done();
+            }, function() {
+                assert.fail()
+            }).finally( function() {
+                scheduler.shutdown();
+            });
+        });
+
+        it('testOverlappingSingleNonExclusiveEvent', function (done) {
+            var jive = this['jive'];
+            var testUtils = this['testUtils'];
+
+            var scheduler = jive.service.scheduler(new this['jiveKue']());
+            tests.testOverlappingSingleNonExclusiveEvent(jive, testUtils, scheduler).then( function() {
+                done();
+            }, function() {
+                assert.fail()
+            }).finally( function() {
+                scheduler.shutdown();
+            });
+        });
+
+        it.only('testOverlappingSingleExclusiveEvent', function (done) {
+            var jive = this['jive'];
+            var testUtils = this['testUtils'];
+
+            var scheduler = jive.service.scheduler(new this['jiveKue']());
+            tests.testOverlappingSingleExclusiveEvent(jive, testUtils, scheduler).then( function() {
+                done();
+            }, function() {
+                assert.fail()
+            }).finally( function() {
+                scheduler.shutdown();
+            });
+        });
+
+        it('testConcurrentIntervalEvents', function (done) {
+            var jive = this['jive'];
+            var testUtils = this['testUtils'];
+
+            var scheduler = jive.service.scheduler(new this['jiveKue']());
+            tests.testConcurrentIntervalEvents(jive, testUtils, scheduler).then( function() {
+                done();
+            }, function() {
+                assert.fail()
+            }).finally( function() {
+                scheduler.shutdown();
+            });
+        });
+
 
     });
 

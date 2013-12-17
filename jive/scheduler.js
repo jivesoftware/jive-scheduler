@@ -214,15 +214,17 @@ Scheduler.prototype.getTasks = function getTasks() {
                 jobsToReturn = jobsToReturn.concat( jobset );
             });
 
-            return jobsToReturn;
+            return q.resolve(jobsToReturn);
         });
     });
 };
 
 Scheduler.prototype.shutdown = function(){
     var scheduler = this;
-    this.getTasks().forEach(function(job){
-        scheduler.unschedule(job);
+    this.getTasks().then( function(tasks) {
+        tasks.forEach(function(job){
+            scheduler.unschedule(job);
+        })
     });
 };
 
