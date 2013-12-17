@@ -202,31 +202,31 @@ exports.testOverlappingSingleNonExclusiveEvent = function( jive, testUtils, sche
     return deferred.promise;
 };
 
-//exports.testOverlappingSingleExclusiveEvent = function( jive, testUtils, scheduler ) {
-//    var deferred = q.defer();
-//
-//    var count = 0;
-//    var event = jive.util.guid();
-//    jive.events.addDefinitionEventListener(event, 'event1Listener', function() {
-//        count++;
-//        return q.resolve();
-//    });
-//
-//    scheduler.init();
-//    scheduler.schedule( event, { eventListener: 'event1Listener' }, undefined, undefined, true );
-//    scheduler.schedule( event, { eventListener: 'event1Listener' }, undefined, undefined, true );
-//
-//    // immediate
-//    setTimeout( function() {
-//        if ( count == 1 ) {
-//            deferred.resolve();
-//        } else {
-//            deferred.reject();
-//        }
-//    }, 2000);
-//
-//    return deferred.promise;
-//};
+exports.testOverlappingSingleExclusiveEvent = function( jive, testUtils, scheduler ) {
+    var deferred = q.defer();
+
+    var count = 0;
+    var event = jive.util.guid();
+    jive.events.addDefinitionEventListener(event, 'event1Listener', function() {
+        count++;
+        return q.resolve();
+    });
+
+    scheduler.init();
+    scheduler.schedule( event, { eventListener: 'event1Listener' }, undefined, undefined, true );
+    scheduler.schedule( event, { eventListener: 'event1Listener' }, undefined, undefined, true );
+
+    // immediate
+    setTimeout( function() {
+        if ( count == 1 ) {
+            deferred.resolve();
+        } else {
+            deferred.reject();
+        }
+    }, 2000);
+
+    return deferred.promise;
+};
 
 exports.testConcurrentIntervalEvents = function( jive, testUtils, scheduler ) {
     var deferred = q.defer();

@@ -118,19 +118,19 @@ describe('jive', function () {
             });
         });
 
-        it.only('testOverlappingSingleExclusiveEvent', function (done) {
-            var jive = this['jive'];
-            var testUtils = this['testUtils'];
-
-            var scheduler = jive.service.scheduler(new this['jiveKue']());
-            tests.testOverlappingSingleExclusiveEvent(jive, testUtils, scheduler).then( function() {
-                done();
-            }, function() {
-                assert.fail()
-            }).finally( function() {
-                scheduler.shutdown();
-            });
-        });
+//        it.only('testOverlappingSingleExclusiveEvent', function (done) {
+//            var jive = this['jive'];
+//            var testUtils = this['testUtils'];
+//
+//            var scheduler = jive.service.scheduler(new this['jiveKue']());
+//            tests.testOverlappingSingleExclusiveEvent(jive, testUtils, scheduler).then( function() {
+//                done();
+//            }, function() {
+//                assert.fail()
+//            }).finally( function() {
+//                scheduler.shutdown();
+//            });
+//        });
 
         it('testConcurrentIntervalEvents', function (done) {
             var jive = this['jive'];
