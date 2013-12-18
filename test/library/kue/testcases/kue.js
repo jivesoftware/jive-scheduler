@@ -146,6 +146,20 @@ describe('jive', function () {
             });
         });
 
+        it('testFailedEvent', function (done) {
+            var jive = this['jive'];
+            var testUtils = this['testUtils'];
+
+            var scheduler = jive.service.scheduler(new this['jiveKue']());
+            tests.testFailedEvent(jive, testUtils, scheduler).then( function() {
+                done();
+            }, function() {
+                assert.fail()
+            }).finally( function() {
+                scheduler.shutdown();
+            });
+        });
+
 
     });
 

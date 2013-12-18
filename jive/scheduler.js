@@ -131,6 +131,9 @@ Scheduler.prototype.schedule = function schedule(eventID, context, interval, del
 
     var timeoutWatcher = setTimeout( function() {
         jive.logger.warn("Failed jobID " + meta['jobID'] + " eventID " + eventID + " due to timeout");
+        if ( meta['context'] && meta['context']['tileInstance'] ) {
+            jive.logger.warn( meta['context']['tileInstance']['name'] );
+        }
         job.failed();
 
         deferred.resolve();
@@ -150,18 +153,32 @@ Scheduler.prototype.schedule = function schedule(eventID, context, interval, del
             }
 
             var jobResult = latestJobState['data']['result'];
-            if ( !err ) {
-                deferred.resolve( jobResult ? jobResult['result'] : null );
+
+            if ( err ) {
+                deferred.reject(err);
             } else {
-                if ( !jobResult ) {
-                    deferred.resolve();
-                } else {
-                    var parsed = JSON.parse(jobResult);
-                    if ( parsed['err'] ) {
-                        deferred.reject(  parsed['err'] );
+                if ( jobResult ) {
+                    if ( typeof jobResult !== 'object' ) {
+                        try {
+                            jobResult = JSON.parse(jobResult);
+                            if ( jobResult['err'] ) {
+                                deferred.reject(  jobResult['err'] );
+                            } else {
+                                deferred.resolve( jobResult['result']);
+                            }
+                        } catch ( e ) {
+                            deferred.resolve(jobResult);
+                        }
                     } else {
-                        deferred.resolve( parsed['result']);
+                        if ( jobResult['err'] ) {
+                            deferred.reject(  jobResult['err'] );
+                        } else {
+                            deferred.resolve( jobResult['result']);
+                        }
                     }
+                } else {
+                    // empty success result
+                    deferred.resolve();
                 }
             }
 

@@ -222,7 +222,7 @@ function eventExecutor(job, done) {
                 // error
                 function(err) {
                     jive.logger.error("Error!", err);
-                    job.data['result'] = { 'err' : err };
+                    job.data['result'] = { 'err' : err || 'unknown_error'};
                     job.update( function() {
                         next();
                     });
