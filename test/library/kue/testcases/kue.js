@@ -20,6 +20,62 @@ describe('jive', function () {
             });
         });
 
+        it('testSimpleSingleEventGlobalFireUntargeted', function (done) {
+            var jive = this['jive'];
+            var testUtils = this['testUtils'];
+
+            var scheduler = jive.service.scheduler(new this['jiveKue']());
+            tests.testSimpleSingleEventGlobalFireUntargeted(jive, testUtils, scheduler).then( function() {
+                done();
+            }, function() {
+                assert.fail()
+            }).finally( function() {
+                scheduler.shutdown();
+            });
+        });
+
+        it('testSimpleSingleEventGlobalFireTargeted', function (done) {
+            var jive = this['jive'];
+            var testUtils = this['testUtils'];
+
+            var scheduler = jive.service.scheduler(new this['jiveKue']());
+            tests.testSimpleSingleEventGlobalFireTargeted(jive, testUtils, scheduler).then( function() {
+                done();
+            }, function() {
+                assert.fail()
+            }).finally( function() {
+                scheduler.shutdown();
+            });
+        });
+
+        it('testSimpleSingleEventMixedFireUntargeted', function (done) {
+            var jive = this['jive'];
+            var testUtils = this['testUtils'];
+
+            var scheduler = jive.service.scheduler(new this['jiveKue']());
+            tests.testSimpleSingleEventMixedFireUntargeted(jive, testUtils, scheduler).then( function() {
+                done();
+            }, function() {
+                assert.fail()
+            }).finally( function() {
+                scheduler.shutdown();
+            });
+        });
+
+        it('testSimpleSingleEventGlobalFireTargeted', function (done) {
+            var jive = this['jive'];
+            var testUtils = this['testUtils'];
+
+            var scheduler = jive.service.scheduler(new this['jiveKue']());
+            tests.testSimpleSingleEventGlobalFireTargeted(jive, testUtils, scheduler).then( function() {
+                done();
+            }, function() {
+                assert.fail()
+            }).finally( function() {
+                scheduler.shutdown();
+            });
+        });
+
         it('testSimpleIntervalEvent', function (done) {
             var jive = this['jive'];
             var testUtils = this['testUtils'];
